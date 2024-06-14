@@ -144,39 +144,44 @@ class Response {
   }
 }
 
-globalThis.fetch = (uri, opts) => {
-  let optsWithDefault = {
-    method: "GET",
-    headers: {},
-    body: null,
-    ...opts,
+(function () {
+  const __fetch = globalThis.__fetch;
+  globalThis.fetch = (uri, opts) => {
+    let optsWithDefault = {
+      method: "GET",
+      headers: {},
+      body: null,
+      ...opts,
+    };
+
+    if (
+      optsWithDefault.body !== null &&
+      typeof optsWithDefault.body !== "string"
+    ) {
+      try {
+        optsWithDefault.body = new TextEncoder().encode(optsWithDefault.body);
+      } catch (e) {
+        return Promise.reject(
+          `There was an error encoding the body: ${e}. Use a String or encode it using TextEncoder.`,
+        );
+      }
+    }
+
+    let result = __fetch(uri, optsWithDefault);
+
+    if (result.error === true) {
+      return Promise.reject(new Error(`[${result.type}] ${result.message}`));
+    } else {
+      let response = new Response(result.body, {
+        headers: result.headers,
+        status: result.status,
+      });
+
+      return Promise.resolve(response);
+    }
   };
 
-  if (
-    optsWithDefault.body !== null &&
-    typeof optsWithDefault.body !== "string"
-  ) {
-    try {
-      optsWithDefault.body = new TextEncoder().encode(optsWithDefault.body);
-    } catch (e) {
-      return Promise.reject(
-        `There was an error encoding the body: ${e}. Use a String or encode it using TextEncoder.`,
-      );
-    }
-  }
-
-  let result = __fetch(uri, optsWithDefault);
-
-  if (result.error === true) {
-    return Promise.reject(new Error(`[${result.type}] ${result.message}`));
-  } else {
-    let response = new Response(result.body, {
-      headers: result.headers,
-      status: result.status,
-    });
-
-    return Promise.resolve(response);
-  }
-};
+  Reflect.deleteProperty(globalThis, "__fetch");
+})();
 
 export { Headers, Response };
