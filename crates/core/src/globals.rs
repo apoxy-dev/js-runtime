@@ -19,6 +19,7 @@ pub fn inject_globals(context: &JSContextRef) -> anyhow::Result<()> {
     let clock = build_clock(context)?;
     let mem = build_memory(context)?;
     let host = build_host_object(context)?;
+    let fetch = build_fetch_object(context)?;
 
     let global = context.global_object()?;
     global.set_property("console", console)?;
@@ -31,6 +32,7 @@ pub fn inject_globals(context: &JSContextRef) -> anyhow::Result<()> {
     global.set_property("__decodeUtf8BufferToString", decoder)?;
     global.set_property("__encodeStringToUtf8Buffer", encoder)?;
     global.set_property("__getTime", clock)?;
+    global.set_property("__fetch", fetch)?;
 
     add_host_functions(context)?;
 
@@ -161,6 +163,51 @@ fn build_host_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
     host_object.set_property("outputBytes", host_output_bytes)?;
     host_object.set_property("outputString", host_output_string)?;
     Ok(host_object)
+}
+
+fn build_fetch_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
+    let fetch_callback = context.wrap_callback(
+        |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
+            let url = args.get(0).unwrap().as_str()?;
+            let opts: HashMap<String, JSValue> = args.get(1).unwrap().try_into()?;
+
+            let method = opts.get("method").unwrap().to_string();
+            match method.as_str() {
+                "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS" => {}
+                _ => return Err(anyhow!("Invalid method: {}", method)),
+            }
+            let mut http_req = HttpRequest::new(url).with_method(method.to_string());
+
+            let headers = opts.get("headers").unwrap();
+            if let JSValue::Object(headers) = headers {
+                for (key, value) in headers {
+                    http_req = http_req.with_header(key, value.to_string());
+                }
+            }
+
+            let body = opts.get("body").unwrap_or(&JSValue::Undefined);
+            let mut http_body: Option<String> = None;
+            if let JSValue::String(body) = body {
+                http_body = Some(body.clone());
+            }
+
+            match http::request::<String>(&http_req, http_body) {
+                Ok(resp) => {
+                    let parsed_result = HashMap::from([
+                        ("status", JSValue::Int(i32::from(resp.status_code()))),
+                        ("body", JSValue::ArrayBuffer(resp.body())),
+                    ]);
+                    Ok(JSValue::from_hashmap(parsed_result))
+                }
+                Err(e) => Ok(JSValue::from_hashmap(HashMap::from([
+                    ("error", JSValue::Bool(true)),
+                    ("type", JSValue::String("InternalError".to_string())),
+                    ("message", JSValue::String(e.to_string())),
+                ]))),
+            }
+        },
+    )?;
+    Ok(fetch_callback)
 }
 
 fn add_host_functions(context: &JSContextRef) -> anyhow::Result<()> {

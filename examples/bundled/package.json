@@ -10,9 +10,9 @@
   "author": "",
   "license": "BSD-3-Clause",
   "devDependencies": {
-    "@extism/js-pdk": "../../crates/core/src/prelude",
+    "@extism/js-pdk": "file:../../crates/core/src/prelude",
     "cross-env": "^7.0.3",
-    "esbuild": "^0.19.6",
+    "esbuild": "^0.19.12",
     "typescript": "^5.3.2"
   }
 }

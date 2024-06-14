@@ -10,6 +10,7 @@ import "urlpattern-polyfill";
 
 import "./config";
 import "./date";
+import "./fetch";
 import "./text-decoder";
 import "./text-encoder";
 import "./host";

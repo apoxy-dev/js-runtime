@@ -3,13 +3,17 @@
   "version": "1.0.1",
   "description": "typescript definitions for the extism js-pdk",
   "types": "dist/index.d.ts",
-  "files": ["dist/*.d.ts", "types/*.d.ts"],
+  "files": [
+    "dist/*.d.ts",
+    "types/*.d.ts"
+  ],
   "scripts": {
     "build": "node esbuild.js && tsc"
   },
   "author": "The Extism Authors <oss@extism.org>",
   "license": "BSD-Clause-3",
   "dependencies": {
+    "http-status": "^1.7.4",
     "urlpattern-polyfill": "^8.0.2"
   },
   "devDependencies": {
