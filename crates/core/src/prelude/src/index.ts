@@ -8,6 +8,7 @@ import "core-js/actual/url/to-json";
 import "core-js/actual/url-search-params";
 import "urlpattern-polyfill";
 
+import "./apoxy";
 import "./config";
 import "./date";
 import "./fetch";

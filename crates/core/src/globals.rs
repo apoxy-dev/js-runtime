@@ -10,6 +10,7 @@ static PRELUDE: &[u8] = include_bytes!("prelude/dist/index.js"); // if this pani
 
 pub fn inject_globals(context: &JSContextRef) -> anyhow::Result<()> {
     let module = build_module_object(context)?;
+    let apoxy = build_apoxy_object(context)?;
     let console = build_console_object(context)?;
     let var = build_var_object(context)?;
     let http = build_http_object(context)?;
@@ -22,6 +23,7 @@ pub fn inject_globals(context: &JSContextRef) -> anyhow::Result<()> {
     let fetch = build_fetch_object(context)?;
 
     let global = context.global_object()?;
+    global.set_property("Apoxy", apoxy)?;
     global.set_property("console", console)?;
     global.set_property("module", module)?;
     global.set_property("Host", host)?;
@@ -77,6 +79,17 @@ fn get_args_as_str(args: &[JSValueRef]) -> anyhow::Result<String> {
         .collect::<Result<Vec<&str>, _>>()
         .map(|vec| vec.join(" "))
         .context("Failed to convert args to string")
+}
+
+fn build_apoxy_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
+    let apoxy_object = context.object_value()?;
+    let apoxy_serve = context.wrap_callback(
+        |_ctx: &JSContextRef, _this: JSValueRef, _args: &[JSValueRef]| Ok(JSValue::Undefined),
+    )?;
+
+    apoxy_object.set_property("serve", apoxy_serve)?;
+
+    Ok(apoxy_object)
 }
 
 fn build_console_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {

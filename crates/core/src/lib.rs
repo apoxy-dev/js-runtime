@@ -1,3 +1,4 @@
+use extism_pdk::*;
 use once_cell::sync::OnceCell;
 use quickjs_wasm_rs::{JSContextRef, JSValue, JSValueRef};
 use std::io;
@@ -82,7 +83,9 @@ fn invoke<'a, T, F: Fn(&'a JSContextRef, JSValueRef<'a>) -> T>(
 
     let export_names = export_names(exports).unwrap();
 
-    let function = exports.get_property(export_names[idx as usize].as_str()).unwrap();
+    let function = exports
+        .get_property(export_names[idx as usize].as_str())
+        .unwrap();
     let function_invocation_result = function.call(&context.undefined_value().unwrap(), &args);
 
     while context.is_pending() {
@@ -194,4 +197,25 @@ fn export_names(exports: JSValueRef<'static>) -> anyhow::Result<Vec<String>> {
     }
     keys.sort();
     Ok(keys)
+}
+
+#[plugin_fn]
+pub fn _start() -> FnResult<String> {
+    Ok(format!("Hello from Rust!"))
+}
+
+#[plugin_fn]
+pub fn _apoxy_start() -> FnResult<()> {
+    let context = js_context();
+    context
+        .global_object()?
+        .get_property("__handler")?
+        .call(&context.undefined_value().unwrap(), &[])?;
+
+    // Execute all pending operations (e.g promises).
+    while context.is_pending() {
+        context.execute_pending()?;
+    }
+
+    Ok(())
 }
