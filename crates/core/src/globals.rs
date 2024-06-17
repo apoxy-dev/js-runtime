@@ -10,7 +10,6 @@ static PRELUDE: &[u8] = include_bytes!("prelude/dist/index.js"); // if this pani
 
 pub fn inject_globals(context: &JSContextRef) -> anyhow::Result<()> {
     let module = build_module_object(context)?;
-    let apoxy = build_apoxy_object(context)?;
     let console = build_console_object(context)?;
     let var = build_var_object(context)?;
     let http = build_http_object(context)?;
@@ -20,7 +19,10 @@ pub fn inject_globals(context: &JSContextRef) -> anyhow::Result<()> {
     let clock = build_clock(context)?;
     let mem = build_memory(context)?;
     let host = build_host_object(context)?;
+
+    let apoxy = build_apoxy_object(context)?;
     let fetch = build_fetch_object(context)?;
+    let apoxy_req_body = build_apoxy_req_body_object(context)?;
 
     let global = context.global_object()?;
     global.set_property("Apoxy", apoxy)?;
@@ -35,6 +37,7 @@ pub fn inject_globals(context: &JSContextRef) -> anyhow::Result<()> {
     global.set_property("__encodeStringToUtf8Buffer", encoder)?;
     global.set_property("__getTime", clock)?;
     global.set_property("__fetch", fetch)?;
+    global.set_property("__apoxy_req_body", apoxy_req_body)?;
 
     add_host_functions(context)?;
 
@@ -90,6 +93,32 @@ fn build_apoxy_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
     apoxy_object.set_property("serve", apoxy_serve)?;
 
     Ok(apoxy_object)
+}
+
+#[link(wasm_import_module = "extism:host/user")]
+extern "C" {
+    pub fn _apoxy_req_body(offs: u64) -> u64;
+}
+
+fn build_apoxy_req_body_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
+    let apoxy_req_body = context.wrap_callback(
+        |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
+            let req = args.first().unwrap().as_str()?;
+            let mem = Memory::from_bytes(req)?;
+
+            let offs = unsafe { _apoxy_req_body(mem.offset()) };
+            let len = unsafe { extism::length_unsafe(offs) };
+            let mem = Memory(MemoryHandle {
+                offset: offs,
+                length: len,
+            });
+
+            let result = HashMap::from([("bytes", JSValue::ArrayBuffer(mem.to_vec()))]);
+            Ok(JSValue::from_hashmap(result))
+        },
+    )?;
+
+    Ok(apoxy_req_body)
 }
 
 fn build_console_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
