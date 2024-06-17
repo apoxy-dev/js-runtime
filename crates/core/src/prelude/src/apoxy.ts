@@ -46,7 +46,7 @@ declare global {
 
     headers: Headers;
 
-    body(): Promise<Uint8Array>;
+    body(): Uint8Array;
 
     set_body(body: Uint8Array): void;
 
@@ -186,17 +186,15 @@ class RequestImpl implements Request {
 
   content_len: number = 0;
 
-  body(): Promise<Uint8Array> {
-    return new Promise((resolve, reject) => {
-      const result = __apoxy_req_body(this.abiReq());
-      if (result.error === true) {
-        reject(new Error(result.message));
-      } else {
-        this.content_len = result.bytes.length;
-        this._body = result.bytes;
-        resolve(new Uint8Array(result.bytes));
-      }
-    });
+  body(): Uint8Array {
+    const result = __apoxy_req_body(this.abiReq());
+    if (result.error === true) {
+      throw new Error(result.message);
+    }
+
+    this.content_len = result.bytes.length;
+    this._body = result.bytes;
+    return new Uint8Array(result.bytes);
   }
 
   set_body(body: Uint8Array): void {
@@ -214,7 +212,6 @@ class RequestImpl implements Request {
     if (result.error === true) {
       throw new Error(result.message);
     } else {
-      console.debug("Response ABI", this._abi_response.toString());
       this._response = new BackendResponseImpl(this._abi_response);
       return this._response;
     }
