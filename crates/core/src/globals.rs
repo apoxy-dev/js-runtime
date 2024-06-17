@@ -4,6 +4,7 @@ use anyhow::{anyhow, bail, Context};
 use chrono::{SecondsFormat, Utc};
 use extism_pdk::extism::load_input;
 use extism_pdk::*;
+use javy::json;
 use quickjs_wasm_rs::{JSContextRef, JSError, JSValue, JSValueRef};
 
 static PRELUDE: &[u8] = include_bytes!("prelude/dist/index.js"); // if this panics, run `make` from the root
@@ -23,6 +24,7 @@ pub fn inject_globals(context: &JSContextRef) -> anyhow::Result<()> {
     let apoxy = build_apoxy_object(context)?;
     let fetch = build_fetch_object(context)?;
     let apoxy_req_body = build_apoxy_req_body_object(context)?;
+    let apoxy_req_send = build_apoxy_req_send_object(context)?;
 
     let global = context.global_object()?;
     global.set_property("Apoxy", apoxy)?;
@@ -38,6 +40,7 @@ pub fn inject_globals(context: &JSContextRef) -> anyhow::Result<()> {
     global.set_property("__getTime", clock)?;
     global.set_property("__fetch", fetch)?;
     global.set_property("__apoxy_req_body", apoxy_req_body)?;
+    global.set_property("__apoxy_req_send", apoxy_req_send)?;
 
     add_host_functions(context)?;
 
@@ -98,12 +101,13 @@ fn build_apoxy_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
 #[link(wasm_import_module = "extism:host/user")]
 extern "C" {
     pub fn _apoxy_req_body(offs: u64) -> u64;
+    pub fn _apoxy_req_send(req_offs: u64, body_offs: u64) -> u64;
 }
 
 fn build_apoxy_req_body_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
     let apoxy_req_body = context.wrap_callback(
         |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
-            let req_bytes = javy::json::transcode_output(*(args.first().unwrap()))?;
+            let req_bytes = json::transcode_output(*(args.first().unwrap()))?;
             let mem = Memory::from_bytes(req_bytes)?;
 
             let offs = unsafe { _apoxy_req_body(mem.offset()) };
@@ -119,6 +123,38 @@ fn build_apoxy_req_body_object(context: &JSContextRef) -> anyhow::Result<JSValue
     )?;
 
     Ok(apoxy_req_body)
+}
+
+fn build_apoxy_req_send_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
+    let apoxy_req_send = context.wrap_callback(
+        |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
+            let this = args.first().unwrap();
+
+            let req_bytes = json::transcode_output(*(args.get(1).unwrap()))?;
+            let req_mem = Memory::from_bytes(req_bytes)?;
+
+            let body_bytes = json::transcode_output(*(args.get(2).unwrap()))?;
+            let body_mem = Memory::from_bytes(body_bytes)?;
+
+            debug!("apoxy_req_send");
+            let offs = unsafe { _apoxy_req_send(req_mem.offset(), body_mem.offset()) };
+            let len = unsafe { extism::length_unsafe(offs) };
+            let mem = Memory(MemoryHandle {
+                offset: offs,
+                length: len,
+            });
+
+            let response = json::transcode_input(_ctx, mem.to_vec().as_slice()).unwrap();
+            this.set_property("_abi_response", response).unwrap();
+
+            Ok(JSValue::from_hashmap(HashMap::from([(
+                "error",
+                JSValue::Bool(false),
+            )])))
+        },
+    )?;
+
+    Ok(apoxy_req_send)
 }
 
 fn build_console_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {

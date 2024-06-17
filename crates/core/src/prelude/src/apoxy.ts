@@ -8,9 +8,10 @@ declare global {
     bytes: Uint8Array;
   };
   function __apoxy_req_send(
+    obj: RequestImpl,
     abiReq: RequestABI,
     body: Uint8Array,
-  ): { error: boolean; message: string; response: string };
+  ): { error: boolean; message: string };
   //function __apoxy_resp_body,
   //function __apoxy_resp_send,
   //function __apoxy_send_downstream,
@@ -28,6 +29,7 @@ declare global {
 
     toObject(): Record<string, string>;
   }
+
   interface Request {
     url: string;
 
@@ -48,7 +50,7 @@ declare global {
 
     set_body(body: Uint8Array): void;
 
-    next(): Promise<Response>;
+    next(): Response;
 
     response(): Response | null;
   }
@@ -203,19 +205,19 @@ class RequestImpl implements Request {
     this._body_set = true;
   }
 
-  next(): Promise<Response> {
-    return new Promise((resolve, reject) => {
-      const result = __apoxy_req_send(
-        this.abiReq(),
-        this._body_set ? this._body : new Uint8Array(0),
-      );
-      if (result.error === true) {
-        reject(new Error(result.message));
-      } else {
-        this._response = new FilterResponseImpl(result.response);
-        resolve(this._response);
-      }
-    });
+  next(): Response {
+    const result = __apoxy_req_send(
+      this,
+      this.abiReq(),
+      this._body_set ? this._body : new Uint8Array(0),
+    );
+    if (result.error === true) {
+      throw new Error(result.message);
+    } else {
+      console.debug("Response ABI", this._abi_response.toString());
+      this._response = new BackendResponseImpl(this._abi_response);
+      return this._response;
+    }
   }
 
   response(): Response | null {
@@ -237,6 +239,7 @@ class RequestImpl implements Request {
   }
   private _body: Uint8Array | null = null;
   private _body_set: boolean = false;
+  private _abi_response: ResponseABI | null = null;
   private _response: Response | null = null;
 }
 
@@ -315,12 +318,10 @@ class BackendResponseImpl implements Response {
   code: number = 200;
   content_len: number = 0;
 
-  constructor();
-  constructor(json?: string) {
-    if (!json) {
+  constructor(obj?: ResponseABI) {
+    if (!obj) {
       return;
     }
-    const obj: ResponseABI = JSON.parse(json);
     this.code = obj.status_code;
     this.content_len = obj.content_len;
     this._headers = new HeadersImpl(obj.header);
