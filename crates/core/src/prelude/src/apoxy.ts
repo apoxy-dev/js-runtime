@@ -2,13 +2,13 @@ declare global {
   /**
    * @internal
    */
-  function __apoxy_req_body(reqJson: string): {
+  function __apoxy_req_body(abiReq: RequestABI): {
     error: boolean;
     message: string;
     bytes: Uint8Array;
   };
   function __apoxy_req_send(
-    reqJson: string,
+    abiReq: RequestABI,
     body: Uint8Array,
   ): { error: boolean; message: string; response: string };
   //function __apoxy_resp_body,
@@ -186,7 +186,7 @@ class RequestImpl implements Request {
 
   body(): Promise<Uint8Array> {
     return new Promise((resolve, reject) => {
-      const result = __apoxy_req_body(this.marshal());
+      const result = __apoxy_req_body(this.abiReq());
       if (result.error === true) {
         reject(new Error(result.message));
       } else {
@@ -206,7 +206,7 @@ class RequestImpl implements Request {
   next(): Promise<Response> {
     return new Promise((resolve, reject) => {
       const result = __apoxy_req_send(
-        this.marshal(),
+        this.abiReq(),
         this._body_set ? this._body : new Uint8Array(0),
       );
       if (result.error === true) {
@@ -222,8 +222,8 @@ class RequestImpl implements Request {
     return this._response;
   }
 
-  private marshal(): string {
-    const abiReq: RequestABI = {
+  private abiReq(): RequestABI {
+    return {
       method: this.method!,
       url: this.url,
       proto: "HTTP",
@@ -234,7 +234,6 @@ class RequestImpl implements Request {
       remote_addr: "",
       content_len: this.content_len,
     };
-    return JSON.stringify(abiReq);
   }
   private _body: Uint8Array | null = null;
   private _body_set: boolean = false;

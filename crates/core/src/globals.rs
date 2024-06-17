@@ -103,8 +103,8 @@ extern "C" {
 fn build_apoxy_req_body_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
     let apoxy_req_body = context.wrap_callback(
         |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
-            let req = args.first().unwrap().as_str()?;
-            let mem = Memory::from_bytes(req)?;
+            let req_bytes = javy::json::transcode_output(*(args.first().unwrap()))?;
+            let mem = Memory::from_bytes(req_bytes)?;
 
             let offs = unsafe { _apoxy_req_body(mem.offset()) };
             let len = unsafe { extism::length_unsafe(offs) };
