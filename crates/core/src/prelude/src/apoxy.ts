@@ -7,13 +7,29 @@ declare global {
     message: string;
     bytes: Uint8Array;
   };
+  /**
+   * @internal
+   */
   function __apoxy_req_send(
     obj: RequestImpl,
     abiReq: RequestABI,
     body: Uint8Array,
   ): { error: boolean; message: string };
-  //function __apoxy_resp_body,
+  /**
+   * @internal
+   */
+  function __apoxy_resp_body(abiRes: ResponseABI): {
+    error: boolean;
+    message: string;
+    bytes: Uint8Array;
+  };
+  /**
+   * @internal
+   */
   //function __apoxy_resp_send,
+  /**
+   * @internal
+   */
   //function __apoxy_send_downstream,
 
   interface Headers {
@@ -63,9 +79,9 @@ declare global {
 
     headers(): Headers;
 
-    body(): string;
+    body(): Uint8Array;
 
-    send(body: string): void;
+    send(body: Uint8Array): void;
   }
 
   type ServeHandler = (req: Request, res: Response) => void;
@@ -270,11 +286,11 @@ class FilterResponseImpl implements Response {
     return this._headers;
   }
 
-  body(): string {
+  body(): Uint8Array {
     return this._body;
   }
 
-  send(body: string): void {
+  send(body: Uint8Array): void {
     this.content_len = body.length;
     this._body = body;
     this._set = true;
@@ -307,7 +323,7 @@ class FilterResponseImpl implements Response {
   }
 
   private _headers: HeadersImpl = new HeadersImpl();
-  private _body: string;
+  private _body: Uint8Array | null = null;
   private _set: boolean = false;
 }
 
@@ -333,30 +349,23 @@ class BackendResponseImpl implements Response {
     return this._headers;
   }
 
-  body(): string {
-    /*
-    if (this._body) {
-      return this._body;
-    }
-
-    const resp_json: ResponseABI = {
+  body(): Uint8Array {
+    const abiResp: ResponseABI = {
       status_code: this.code,
       content_len: this.content_len,
       header: this._headers.toObject(),
     };
-    const resp_str = JSON.stringify(resp_json);
-    const resp_mem = Memory.fromString(resp_str);
-    const ret_mem = _apoxy_resp_body(resp_mem.offset);
-    if (ret_mem <= 0) {
-      throw new Error("Failed to get response body");
+    const result = __apoxy_resp_body(abiResp);
+    if (result.error === true) {
+      throw new Error(result.message);
     }
-    this._body = Memory.find(ret_mem).readString();
-    this.content_len = this._body.length;
-    */
-    return this._body;
+
+    this.content_len = result.bytes.length;
+    this._body = result.bytes;
+    return new Uint8Array(result.bytes);
   }
 
-  send(body: string): void {
+  send(body: Uint8Array): void {
     this.content_len = body.length;
     this._body = body;
   }
@@ -383,7 +392,7 @@ class BackendResponseImpl implements Response {
   }
 
   private _headers: Headers = new HeadersImpl();
-  private _body: string = "";
+  private _body: Uint8Array | null = null;
 }
 
 export {};
