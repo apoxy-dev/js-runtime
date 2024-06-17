@@ -207,10 +207,13 @@ pub fn _start() -> FnResult<String> {
 #[plugin_fn]
 pub fn _apoxy_start() -> FnResult<()> {
     let context = js_context();
+
+    let req = javy::json::transcode_input(&context, input_bytes().as_slice())?;
+
     context
         .global_object()?
         .get_property("__handler")?
-        .call(&context.undefined_value().unwrap(), &[])?;
+        .call(&context.undefined_value().unwrap(), &[req])?;
 
     // Execute all pending operations (e.g promises).
     while context.is_pending() {

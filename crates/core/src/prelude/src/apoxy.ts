@@ -75,12 +75,27 @@ declare global {
   /**
    * @internal
    */
-  var __handler: ServeHandler;
+  var __handler: (req: RequestABI) => void;
 }
 
 Apoxy.serve = new Proxy(Apoxy.serve, {
   apply(target, thisArg, [handler]) {
-    __handler = handler;
+    __handler = (reqABI: RequestABI) => {
+      try {
+        let req = new RequestImpl(reqABI);
+        let resp = new FilterResponseImpl();
+
+        handler!(req, resp);
+
+        resp.sendDownstream();
+        let backend_resp = req.response() as BackendResponseImpl;
+        if (backend_resp) {
+          backend_resp.sendDownstream();
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
     return Reflect.apply(target, thisArg, [handler]);
   },
 });
@@ -130,10 +145,26 @@ class HeadersImpl implements Headers {
 }
 
 class RequestImpl implements Request {
-  constructor(json: string) {
-    const obj = JSON.parse(json);
+  constructor(obj: RequestABI) {
     this.url = obj.url;
-    this.method = obj.method;
+    switch (obj.method) {
+      case "GET":
+      case "HEAD":
+      case "POST":
+      case "PUT":
+      case "DELETE":
+      case "CONNECT":
+      case "OPTIONS":
+      case "TRACE":
+      case "PATCH":
+        this.method = obj.method;
+        break;
+      case undefined:
+        this.method = "GET";
+        break;
+      default:
+        throw new Error(`Invalid method: ${obj.method}`);
+    }
     this.headers = new HeadersImpl(obj.header);
   }
 
@@ -358,21 +389,4 @@ class BackendResponseImpl implements Response {
   private _body: string = "";
 }
 
-export function handle(
-  input: string,
-  handler: (req: Request, res: Response) => void,
-): void {
-  try {
-    let req = new RequestImpl(input);
-    let resp = new FilterResponseImpl();
-    handler!(req, resp);
-
-    resp.sendDownstream();
-    let backend_resp = req.response() as BackendResponseImpl;
-    if (backend_resp) {
-      backend_resp.sendDownstream();
-    }
-  } catch (e) {
-    console.error(e);
-  }
-}
+export {};
