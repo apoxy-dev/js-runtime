@@ -1,5 +1,5 @@
 [package]
-name = "js-pdk-core"
+name = "js-core"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
