@@ -9,13 +9,7 @@ import "core-js/actual/url-search-params";
 import "urlpattern-polyfill";
 
 import "./apoxy";
-import "./config";
 import "./date";
 import "./fetch";
 import "./text-decoder";
 import "./text-encoder";
-import "./host";
-import "./http";
-import "./memory";
-import "./memory-handle";
-import "./var";

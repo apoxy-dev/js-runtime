@@ -1,8 +1,7 @@
 use std::{borrow::Cow, collections::HashMap, str::from_utf8};
 
-use anyhow::{anyhow, bail, Context};
+use anyhow::{anyhow, Context};
 use chrono::{SecondsFormat, Utc};
-use extism_pdk::extism::load_input;
 use extism_pdk::*;
 use javy::json;
 use quickjs_wasm_rs::{JSContextRef, JSError, JSValue, JSValueRef};
@@ -12,14 +11,9 @@ static PRELUDE: &[u8] = include_bytes!("prelude/dist/index.js"); // if this pani
 pub fn inject_globals(context: &JSContextRef) -> anyhow::Result<()> {
     let module = build_module_object(context)?;
     let console = build_console_object(context)?;
-    let var = build_var_object(context)?;
-    let http = build_http_object(context)?;
-    let cfg = build_config_object(context)?;
     let decoder = build_decoder(context)?;
     let encoder = build_encoder(context)?;
     let clock = build_clock(context)?;
-    let mem = build_memory(context)?;
-    let host = build_host_object(context)?;
 
     let apoxy = build_apoxy_object(context)?;
     let fetch = build_fetch_object(context)?;
@@ -30,26 +24,19 @@ pub fn inject_globals(context: &JSContextRef) -> anyhow::Result<()> {
     let apoxy_send_downstream = build_apoxy_send_downstream_object(context)?;
 
     let global = context.global_object()?;
-    global.set_property("Apoxy", apoxy)?;
     global.set_property("console", console)?;
     global.set_property("module", module)?;
-    global.set_property("Host", host)?;
-    global.set_property("Var", var)?;
-    global.set_property("Http", http)?;
-    global.set_property("Config", cfg)?;
-    global.set_property("Memory", mem)?;
     global.set_property("__decodeUtf8BufferToString", decoder)?;
     global.set_property("__encodeStringToUtf8Buffer", encoder)?;
     global.set_property("__getTime", clock)?;
-    global.set_property("__fetch", fetch)?;
 
+    global.set_property("Apoxy", apoxy)?;
+    global.set_property("__fetch", fetch)?;
     global.set_property("__apoxy_req_body", apoxy_req_body)?;
     global.set_property("__apoxy_req_send", apoxy_req_send)?;
     global.set_property("__apoxy_resp_body", apoxy_resp_body)?;
     global.set_property("__apoxy_resp_send", apoxy_resp_send)?;
     global.set_property("__apoxy_send_downstream", apoxy_send_downstream)?;
-
-    add_host_functions(context)?;
 
     context.eval_global(
         "script.js",
@@ -301,42 +288,6 @@ fn build_module_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
     Ok(module_obj)
 }
 
-fn build_host_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
-    let host_input_bytes = context.wrap_callback(
-        |_ctx: &JSContextRef, _this: JSValueRef, _args: &[JSValueRef]| {
-            let input = unsafe { load_input() };
-            Ok(JSValue::ArrayBuffer(input))
-        },
-    )?;
-    let host_input_string = context.wrap_callback(
-        |_ctx: &JSContextRef, _this: JSValueRef, _args: &[JSValueRef]| {
-            let input = unsafe { load_input() };
-            let string = String::from_utf8(input)?;
-            Ok(JSValue::String(string))
-        },
-    )?;
-    let host_output_bytes = context.wrap_callback(
-        |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
-            let output = args.first().unwrap();
-            extism_pdk::output(output.as_bytes()?)?;
-            Ok(JSValue::Bool(true))
-        },
-    )?;
-    let host_output_string = context.wrap_callback(
-        |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
-            let output = args.first().unwrap();
-            extism_pdk::output(output.as_str()?)?;
-            Ok(JSValue::Bool(true))
-        },
-    )?;
-    let host_object = context.object_value()?;
-    host_object.set_property("inputBytes", host_input_bytes)?;
-    host_object.set_property("inputString", host_input_string)?;
-    host_object.set_property("outputBytes", host_output_bytes)?;
-    host_object.set_property("outputString", host_output_string)?;
-    Ok(host_object)
-}
-
 fn build_fetch_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
     let fetch_callback = context.wrap_callback(
         |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
@@ -380,392 +331,6 @@ fn build_fetch_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
         },
     )?;
     Ok(fetch_callback)
-}
-
-fn add_host_functions(context: &JSContextRef) -> anyhow::Result<()> {
-    let global = context.global_object()?;
-    if global
-        .get_property("Host")?
-        .get_property("invokeHost")?
-        .is_null_or_undefined()
-    {
-        let host_invoke_func = context.wrap_callback(
-            |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
-                let func_id = args.first().unwrap().as_u32_unchecked();
-                let len = args.len() - 1;
-                match len {
-                    0 => {
-                        let result = unsafe { __invokeHostFunc_0_1(func_id) };
-                        Ok(JSValue::Float(result as f64))
-                    }
-                    1 => {
-                        let ptr = args.get(1).unwrap().as_f64_unchecked();
-                        let result = unsafe { __invokeHostFunc_1_1(func_id, ptr as u64) };
-                        Ok(JSValue::Float(result as f64))
-                    }
-                    2 => {
-                        let ptr = args.get(1).unwrap().as_f64_unchecked();
-                        let ptr2 = args.get(2).unwrap().as_f64_unchecked();
-                        let result =
-                            unsafe { __invokeHostFunc_2_1(func_id, ptr as u64, ptr2 as u64) };
-                        Ok(JSValue::Float(result as f64))
-                    }
-                    3 => {
-                        let ptr = args.get(1).unwrap().as_f64_unchecked();
-                        let ptr2 = args.get(2).unwrap().as_f64_unchecked();
-                        let ptr3 = args.get(3).unwrap().as_f64_unchecked();
-                        let result = unsafe {
-                            __invokeHostFunc_3_1(func_id, ptr as u64, ptr2 as u64, ptr3 as u64)
-                        };
-                        Ok(JSValue::Float(result as f64))
-                    }
-                    4 => {
-                        let ptr = args.get(1).unwrap().as_f64_unchecked();
-                        let ptr2 = args.get(2).unwrap().as_f64_unchecked();
-                        let ptr3 = args.get(3).unwrap().as_f64_unchecked();
-                        let ptr4 = args.get(4).unwrap().as_f64_unchecked();
-                        let result = unsafe {
-                            __invokeHostFunc_4_1(
-                                func_id,
-                                ptr as u64,
-                                ptr2 as u64,
-                                ptr3 as u64,
-                                ptr4 as u64,
-                            )
-                        };
-                        Ok(JSValue::Float(result as f64))
-                    }
-                    5 => {
-                        let ptr = args.get(1).unwrap().as_f64_unchecked();
-                        let ptr2 = args.get(2).unwrap().as_f64_unchecked();
-                        let ptr3 = args.get(3).unwrap().as_f64_unchecked();
-                        let ptr4 = args.get(4).unwrap().as_f64_unchecked();
-                        let ptr5 = args.get(5).unwrap().as_f64_unchecked();
-                        let result = unsafe {
-                            __invokeHostFunc_5_1(
-                                func_id,
-                                ptr as u64,
-                                ptr2 as u64,
-                                ptr3 as u64,
-                                ptr4 as u64,
-                                ptr5 as u64,
-                            )
-                        };
-                        Ok(JSValue::Float(result as f64))
-                    }
-                    n => anyhow::bail!("__invokeHostFunc with {n} parameters is not implemented"),
-                }
-            },
-        )?;
-        let host_invoke_func0 = context.wrap_callback(
-            |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
-                let func_id = args.first().unwrap().as_u32_unchecked();
-                let len = args.len() - 1;
-                match len {
-                    0 => {
-                        unsafe { __invokeHostFunc_0_0(func_id) };
-                    }
-                    1 => {
-                        let ptr = args.get(1).unwrap().as_f64_unchecked();
-                        unsafe { __invokeHostFunc_1_0(func_id, ptr as u64) };
-                    }
-                    2 => {
-                        let ptr = args.get(1).unwrap().as_f64_unchecked();
-                        let ptr2 = args.get(2).unwrap().as_f64_unchecked();
-                        unsafe { __invokeHostFunc_2_0(func_id, ptr as u64, ptr2 as u64) };
-                    }
-                    3 => {
-                        let ptr = args.get(1).unwrap().as_f64_unchecked();
-                        let ptr2 = args.get(2).unwrap().as_f64_unchecked();
-                        let ptr3 = args.get(3).unwrap().as_f64_unchecked();
-                        unsafe {
-                            __invokeHostFunc_3_0(func_id, ptr as u64, ptr2 as u64, ptr3 as u64)
-                        };
-                    }
-                    4 => {
-                        let ptr = args.get(1).unwrap().as_f64_unchecked();
-                        let ptr2 = args.get(2).unwrap().as_f64_unchecked();
-                        let ptr3 = args.get(3).unwrap().as_f64_unchecked();
-                        let ptr4 = args.get(4).unwrap().as_f64_unchecked();
-                        unsafe {
-                            __invokeHostFunc_4_0(
-                                func_id,
-                                ptr as u64,
-                                ptr2 as u64,
-                                ptr3 as u64,
-                                ptr4 as u64,
-                            )
-                        };
-                    }
-                    5 => {
-                        let ptr = args.get(1).unwrap().as_f64_unchecked();
-                        let ptr2 = args.get(2).unwrap().as_f64_unchecked();
-                        let ptr3 = args.get(3).unwrap().as_f64_unchecked();
-                        let ptr4 = args.get(4).unwrap().as_f64_unchecked();
-                        let ptr5 = args.get(5).unwrap().as_f64_unchecked();
-                        unsafe {
-                            __invokeHostFunc_5_0(
-                                func_id,
-                                ptr as u64,
-                                ptr2 as u64,
-                                ptr3 as u64,
-                                ptr4 as u64,
-                                ptr5 as u64,
-                            )
-                        };
-                    }
-                    n => anyhow::bail!("__invokeHostFunc0 with {n} parameters is not implemented"),
-                }
-
-                Ok(JSValue::Undefined)
-            },
-        )?;
-
-        let host_object = context.global_object()?.get_property("Host")?;
-        host_object.set_property("invokeFunc", host_invoke_func)?;
-        host_object.set_property("invokeFunc0", host_invoke_func0)?;
-    }
-
-    Ok(())
-}
-
-fn build_var_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
-    let var_set = context.wrap_callback(
-        |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
-            let var_name = args.first().ok_or(anyhow!("Expected var_name argument"))?;
-            let data = args.get(1).ok_or(anyhow!("Expected data argument"))?;
-
-            if data.is_str() {
-                var::set(var_name.as_str()?, data.as_str()?)?;
-            } else if data.is_array_buffer() {
-                var::set(var_name.as_str()?, data.as_bytes()?)?;
-            }
-
-            Ok(JSValue::Undefined)
-        },
-    )?;
-    let var_get = context.wrap_callback(
-        |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
-            let var_name = args.first().ok_or(anyhow!("Expected var_name argument"))?;
-            let data = var::get::<Vec<u8>>(var_name.as_str()?)?;
-            match data {
-                Some(d) => Ok(JSValue::ArrayBuffer(d)),
-                None => Ok(JSValue::Null),
-            }
-        },
-    )?;
-
-    let var_get_str = context.wrap_callback(
-        |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
-            let var_name = args.first().ok_or(anyhow!("Expected var_name argument"))?;
-            let data = var::get::<String>(var_name.as_str()?)?;
-            match data {
-                Some(d) => Ok(JSValue::String(d)),
-                None => Ok(JSValue::Null),
-            }
-        },
-    )?;
-
-    let var_object = context.object_value()?;
-    var_object.set_property("set", var_set)?;
-    var_object.set_property("getBytes", var_get)?;
-    var_object.set_property("getString", var_get_str)?;
-
-    Ok(var_object)
-}
-
-fn build_http_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
-    let http_req = context.wrap_callback(
-        |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
-            let req = args
-                .first()
-                .ok_or(anyhow!("Expected http request argument"))?;
-
-            if !req.is_object() {
-                bail!("First argument should be an http request object");
-            }
-
-            let url = req
-                .get_property("url")
-                .context("Http Request should have url property")?;
-
-            let method = req.get_property("method");
-            let method_str = match method {
-                Ok(m) => m.as_str()?.to_string(),
-                Err(..) => "GET".to_string(),
-            };
-
-            let mut http_req = HttpRequest::new(url.as_str()?).with_method(method_str);
-
-            let headers = req.get_property("headers")?;
-            if !headers.is_null_or_undefined() {
-                if !headers.is_object() {
-                    bail!("Expected headers to be an object");
-                }
-                if headers.is_object() {
-                    let mut header_values = headers.properties()?;
-                    loop {
-                        let key = header_values.next_key()?;
-                        match key {
-                            None => break,
-                            Some(key) => {
-                                let key = key.as_str()?;
-                                let value = header_values.next_value()?;
-                                let value = value.as_str()?;
-                                http_req.headers.insert(key.to_string(), value.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-
-            let body_arg = args.get(1);
-            let mut http_body: Option<String> = None;
-            if let Some(body) = body_arg {
-                http_body = Some(body.as_str()?.to_string());
-            }
-
-            let resp = http::request::<String>(&http_req, http_body)?;
-            let body = resp.body();
-            let body = from_utf8(&body)?;
-
-            let mut resp_obj = HashMap::new();
-            resp_obj.insert("body".to_string(), JSValue::String(body.into()));
-            resp_obj.insert(
-                "status".to_string(),
-                JSValue::Int(resp.status_code() as i32),
-            );
-
-            Ok(JSValue::Object(resp_obj))
-        },
-    )?;
-
-    let http_obj = context.object_value()?;
-    http_obj.set_property("request", http_req)?;
-
-    Ok(http_obj)
-}
-
-fn build_config_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
-    let config_get = context.wrap_callback(
-        |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
-            let key = args.first().ok_or(anyhow!("Expected key argument"))?;
-            if !key.is_str() {
-                bail!("Expected key to be a string");
-            }
-
-            let key = key.as_str()?;
-            match config::get(key) {
-                Ok(Some(v)) => Ok(JSValue::String(v)),
-                _ => Ok(JSValue::Null),
-            }
-        },
-    )?;
-
-    let config_obj = context.object_value()?;
-    config_obj.set_property("get", config_get)?;
-
-    Ok(config_obj)
-}
-
-fn build_memory(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
-    let memory_from_buffer = context.wrap_callback(
-        |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
-            let data = args.first().ok_or(anyhow!("Expected data argument"))?;
-            if !data.is_array_buffer() {
-                bail!("Expected data to be an array buffer");
-            }
-            let data = data.as_bytes()?;
-            let m = extism_pdk::Memory::from_bytes(data)?;
-            let mut mem = HashMap::new();
-
-            // FLOAT NOTE(Chris): SDKs represent addresses as 64-bit offsets and extents. Some
-            // SDKS, like the JS SDK, store block address information in the high 32 bits. Using a
-            // QuickJS integer type would limit us to 32-bits, erasing that info.
-            //
-            // So instead we rely on the time-honored JavaScript tradition of storing 53 bits
-            // of integer data in a double-precision, 64-bit float. This gives us at least 5
-            // bits of the high 32-bits, which allows the JS-SDK to represent 32 allocations.
-            //
-            // Notably, QuickJS supports 64-bit integers (bigint) types, they're just not exposed
-            // through the wrapper library we're using. We should revisit once someone (maybe us?)
-            // exposes bigints through the library.
-            let offset = JSValue::Float(m.offset() as f64);
-            let len = JSValue::Float(m.len() as f64);
-            mem.insert("offset".to_string(), offset);
-            mem.insert("len".to_string(), len);
-            Ok(JSValue::Object(mem))
-        },
-    )?;
-    let memory_find = context.wrap_callback(
-        |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
-            let ptr = args.first().ok_or(anyhow!("Expected offset argument"))?;
-            if !ptr.is_number() {
-                bail!("Expected an offset");
-            }
-            let ptr = if ptr.is_repr_as_i32() {
-                ptr.as_i32_unchecked() as i64
-            } else {
-                ptr.as_f64_unchecked() as i64
-            };
-
-            let Some(m) = extism_pdk::Memory::find(ptr as u64) else {
-                bail!("Offset did not represent a valid block of memory (offset={ptr:x})");
-            };
-            let mut mem = HashMap::new();
-
-            // See "FLOAT NOTE".
-            let offset = JSValue::Float(m.offset() as f64);
-            let len = JSValue::Float(m.len() as f64);
-            mem.insert("offset".to_string(), offset);
-            mem.insert("len".to_string(), len);
-            Ok(JSValue::Object(mem))
-        },
-    )?;
-    let memory_free = context.wrap_callback(
-        |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
-            let ptr = args.first().ok_or(anyhow!("Expected offset argument"))?;
-            if !ptr.is_number() {
-                bail!("Expected an offset");
-            }
-            let ptr = if ptr.is_repr_as_i32() {
-                ptr.as_i32_unchecked() as i64
-            } else {
-                ptr.as_f64_unchecked() as i64
-            };
-            if let Some(x) = extism_pdk::Memory::find(ptr as u64) {
-                x.free();
-            }
-
-            Ok(JSValue::Undefined)
-        },
-    )?;
-    let read_bytes = context.wrap_callback(
-        |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
-            let ptr = args.first().ok_or(anyhow!("Expected offset argument"))?;
-            if !ptr.is_number() {
-                bail!("Expected an offset");
-            }
-            let ptr = if ptr.is_repr_as_i32() {
-                ptr.as_i32_unchecked() as i64
-            } else {
-                ptr.as_f64_unchecked() as i64
-            };
-            let Some(m) = extism_pdk::Memory::find(ptr as u64) else {
-                bail!("Offset did not represent a valid block of memory (offset={ptr:x})");
-            };
-            let bytes = m.to_vec();
-            Ok(JSValue::ArrayBuffer(bytes))
-        },
-    )?;
-
-    let mem_obj = context.object_value()?;
-    mem_obj.set_property("_fromBuffer", memory_from_buffer)?;
-    mem_obj.set_property("_find", memory_find)?;
-    mem_obj.set_property("_free", memory_free)?;
-    mem_obj.set_property("_readBytes", read_bytes)?;
-
-    Ok(mem_obj)
 }
 
 fn build_clock(context: &JSContextRef) -> anyhow::Result<JSValueRef> {

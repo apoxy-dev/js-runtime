@@ -58,8 +58,6 @@ fn main() -> Result<()> {
         names.push(format!("{{ name: '{}', results: {} }}", &name, results));
     }
 
-    contents
-        .extend_from_slice(format!("Host.__hostFunctions = [{}];\n", names.join(", ")).as_bytes());
     contents.append(&mut user_code);
 
     // Create a tmp dir to hold all the library objects
@@ -89,13 +87,6 @@ fn main() -> Result<()> {
         }
     }
 
-    // Create our shim file given our parsed TS module object
-    generate_wasm_shims(
-        &shim_path,
-        &plugin_interface.exports,
-        &plugin_interface.imports,
-    )?;
-
     let output = Command::new("wasm-merge")
         .arg("--version")
         .stdout(Stdio::null())
@@ -109,8 +100,6 @@ fn main() -> Result<()> {
     let status = Command::new("wasm-merge")
         .arg(&core_path)
         .arg("core")
-        .arg(&shim_path)
-        .arg("shim")
         .arg("-o")
         .arg(&opts.output)
         .arg("--enable-reference-types")
