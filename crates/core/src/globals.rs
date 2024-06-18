@@ -26,6 +26,8 @@ pub fn inject_globals(context: &JSContextRef) -> anyhow::Result<()> {
     let apoxy_req_body = build_apoxy_req_body_object(context)?;
     let apoxy_req_send = build_apoxy_req_send_object(context)?;
     let apoxy_resp_body = build_apoxy_resp_body_object(context)?;
+    let apoxy_resp_send = build_apoxy_resp_send_object(context)?;
+    let apoxy_send_downstream = build_apoxy_send_downstream_object(context)?;
 
     let global = context.global_object()?;
     global.set_property("Apoxy", apoxy)?;
@@ -44,6 +46,8 @@ pub fn inject_globals(context: &JSContextRef) -> anyhow::Result<()> {
     global.set_property("__apoxy_req_body", apoxy_req_body)?;
     global.set_property("__apoxy_req_send", apoxy_req_send)?;
     global.set_property("__apoxy_resp_body", apoxy_resp_body)?;
+    global.set_property("__apoxy_resp_send", apoxy_resp_send)?;
+    global.set_property("__apoxy_send_downstream", apoxy_send_downstream)?;
 
     add_host_functions(context)?;
 
@@ -106,6 +110,8 @@ extern "C" {
     pub fn _apoxy_req_body(offs: u64) -> u64;
     pub fn _apoxy_req_send(req_offs: u64, body_offs: u64) -> u64;
     pub fn _apoxy_resp_body(offs: u64) -> u64;
+    pub fn _apoxy_resp_send(resp_offs: u64, body_offs: u64) -> u64;
+    pub fn _apoxy_send_downstream(resp_offs: u64, body_offs: u64) -> u64;
 }
 
 fn build_apoxy_req_body_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
@@ -137,10 +143,9 @@ fn build_apoxy_req_send_object(context: &JSContextRef) -> anyhow::Result<JSValue
             let req_bytes = json::transcode_output(*(args.get(1).unwrap()))?;
             let req_mem = Memory::from_bytes(req_bytes)?;
 
-            let body_bytes = json::transcode_output(*(args.get(2).unwrap()))?;
+            let body_bytes = args.get(2).unwrap().as_bytes()?;
             let body_mem = Memory::from_bytes(body_bytes)?;
 
-            debug!("apoxy_req_send");
             let offs = unsafe { _apoxy_req_send(req_mem.offset(), body_mem.offset()) };
             let len = unsafe { extism::length_unsafe(offs) };
             let mem = Memory(MemoryHandle {
@@ -180,6 +185,70 @@ fn build_apoxy_resp_body_object(context: &JSContextRef) -> anyhow::Result<JSValu
     )?;
 
     Ok(apoxy_resp_body)
+}
+
+fn build_apoxy_resp_send_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
+    let apoxy_resp_send = context.wrap_callback(
+        |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
+            let resp_bytes = json::transcode_output(*(args.first().unwrap()))?;
+            let resp_mem = Memory::from_bytes(resp_bytes)?;
+
+            let body_bytes = args.get(1).unwrap().as_bytes()?;
+            let body_mem = Memory::from_bytes(body_bytes)?;
+
+            let ret = unsafe { _apoxy_resp_send(resp_mem.offset(), body_mem.offset()) };
+            if ret != 0 {
+                return Ok(JSValue::from_hashmap(HashMap::from([
+                    ("error", JSValue::Bool(true)),
+                    (
+                        "message",
+                        JSValue::String("Failed to send response".to_string()),
+                    ),
+                ])));
+            }
+
+            Ok(JSValue::from_hashmap(HashMap::from([(
+                "error",
+                JSValue::Bool(false),
+            )])))
+        },
+    )?;
+
+    Ok(apoxy_resp_send)
+}
+
+fn build_apoxy_send_downstream_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
+    let apoxy_send_downstream = context.wrap_callback(
+        |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
+            let resp_bytes = json::transcode_output(*(args.first().unwrap()))?;
+            let resp_mem = Memory::from_bytes(resp_bytes)?;
+
+            let body_bytes = args.get(1).unwrap().as_bytes()?;
+            let body_mem = Memory::from_bytes(body_bytes)?;
+
+            debug!(
+                "Sending downstream response with {} bytes",
+                body_bytes.len()
+            );
+            let ret = unsafe { _apoxy_send_downstream(resp_mem.offset(), body_mem.offset()) };
+            if ret != 0 {
+                return Ok(JSValue::from_hashmap(HashMap::from([
+                    ("error", JSValue::Bool(true)),
+                    (
+                        "message",
+                        JSValue::String("Failed to send response".to_string()),
+                    ),
+                ])));
+            }
+
+            Ok(JSValue::from_hashmap(HashMap::from([(
+                "error",
+                JSValue::Bool(false),
+            )])))
+        },
+    )?;
+
+    Ok(apoxy_send_downstream)
 }
 
 fn build_console_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {

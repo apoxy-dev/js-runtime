@@ -13,7 +13,7 @@ declare global {
   function __apoxy_req_send(
     obj: RequestImpl,
     abiReq: RequestABI,
-    body: Uint8Array,
+    body: ArrayBuffer,
   ): { error: boolean; message: string };
   /**
    * @internal
@@ -26,11 +26,23 @@ declare global {
   /**
    * @internal
    */
-  //function __apoxy_resp_send,
+  function __apoxy_resp_send(
+    abiRes: ResponseABI,
+    body: Uint8Array,
+  ): {
+    error: boolean;
+    message: string;
+  };
   /**
    * @internal
    */
-  //function __apoxy_send_downstream,
+  function __apoxy_send_downstream(
+    abiRes: ResponseABI,
+    body: ArrayBuffer,
+  ): {
+    error: boolean;
+    message: string;
+  };
 
   interface Headers {
     append(name: string, value: string): void;
@@ -105,7 +117,10 @@ Apoxy.serve = new Proxy(Apoxy.serve, {
 
         handler!(req, resp);
 
-        resp.sendDownstream();
+        if (resp.sendDownstream()) {
+          console.debug("Sent response downstream");
+          return;
+        }
         let backend_resp = req.response() as BackendResponseImpl;
         if (backend_resp) {
           backend_resp.sendDownstream();
@@ -210,6 +225,7 @@ class RequestImpl implements Request {
 
     this.content_len = result.bytes.length;
     this._body = result.bytes;
+    console.debug("Received request body from backend");
     return new Uint8Array(result.bytes);
   }
 
@@ -220,17 +236,19 @@ class RequestImpl implements Request {
   }
 
   next(): Response {
+    console.debug("Sending request to backend");
     const result = __apoxy_req_send(
       this,
       this.abiReq(),
-      this._body_set ? this._body : new Uint8Array(0),
+      this._body_set ? this._body.buffer : new ArrayBuffer(0),
     );
     if (result.error === true) {
       throw new Error(result.message);
-    } else {
-      this._response = new BackendResponseImpl(this._abi_response);
-      return this._response;
     }
+
+    console.debug("Received response from backend");
+    this._response = new BackendResponseImpl(this._abi_response);
+    return this._response;
   }
 
   response(): Response | null {
@@ -291,35 +309,33 @@ class FilterResponseImpl implements Response {
   }
 
   send(body: Uint8Array): void {
+    console.debug("Setting response:", body.length);
     this.content_len = body.length;
     this._body = body;
     this._set = true;
   }
 
-  sendDownstream(): void {
+  sendDownstream(): boolean {
+    console.debug("Response was altered:", this._set);
     if (!this._set) {
-      return;
+      return false;
     }
 
-    const resp_json: ResponseABI = {
+    console.debug("Sending downstream:", this._body ? this._body.length : 0);
+
+    const abiResp: ResponseABI = {
       status_code: this.code,
       content_len: this.content_len,
       header: this._headers.toObject(),
     };
-
-    const resp_str = JSON.stringify(resp_json);
-    console.log("Sending response downstream: ", resp_str);
-
-    /*
-    const ret_mem = _apoxy_send_downstream(
-      Memory.fromString(resp_str).offset,
-      Memory.fromString(this._body).offset,
+    const result = __apoxy_send_downstream(
+      abiResp,
+      this._body ? this._body.buffer : new ArrayBuffer(0),
     );
-    console.log("Sent response downstream: ", ret_mem);
-    if (ret_mem < 0) {
-      throw new Error("Failed to send response downstream");
+    if (result.error === true) {
+      throw new Error(result.message);
     }
-    */
+    return true;
   }
 
   private _headers: HeadersImpl = new HeadersImpl();
@@ -371,24 +387,17 @@ class BackendResponseImpl implements Response {
   }
 
   sendDownstream(): void {
-    /*
-    console.log("Sending backend response downstream");
-    const resp_json: ResponseABI = {
+    const abiResp: ResponseABI = {
       status_code: this.code,
       content_len: this.content_len,
       header: this._headers.toObject(),
     };
-    const resp_str = JSON.stringify(resp_json);
     // For the upstream case, we're modifying the response object in place
     // so we don't need to send the body to the VM.
-    const ret_mem = _apoxy_resp_send(
-      Memory.fromString(resp_str),
-      Memory.fromString(this._body).offset,
-    );
-    if (ret_mem <= 0) {
-      throw new Error("Failed to send response downstream");
+    const result = __apoxy_resp_send(abiResp, this._body || new Uint8Array(0));
+    if (result.error === true) {
+      throw new Error(result.message);
     }
-    */
   }
 
   private _headers: Headers = new HeadersImpl();
