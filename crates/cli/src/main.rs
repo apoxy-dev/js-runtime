@@ -1,15 +1,10 @@
 mod opt;
 mod options;
-mod shims;
-mod ts_parser;
 
 use crate::options::Options;
-use crate::ts_parser::parse_interface_file;
 use anyhow::{bail, Result};
 use log::LevelFilter;
-use shims::generate_wasm_shims;
 use std::env;
-use std::path::PathBuf;
 use std::process::Stdio;
 use std::{fs, io::Write, process::Command};
 use structopt::StructOpt;
@@ -32,39 +27,13 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    // We need to parse the interface.d.ts file
-    let interface_path = PathBuf::from(&opts.interface_file);
-    if !interface_path.exists() {
-        bail!(
-            "Could not find interface file {}. Set to a valid d.ts file with the -i flag",
-            &interface_path.to_str().unwrap()
-        );
-    }
-    let plugin_interface = parse_interface_file(&interface_path)?;
-
     // Copy in the user's js code from the configured file
-    let mut user_code = fs::read(&opts.input_js)?;
-
-    // If we have imports, we need to inject some state needed for host function support
-    let mut contents = Vec::new();
-    let mut names = Vec::new();
-    let mut sorted_names = Vec::new();
-    for ns in &plugin_interface.imports {
-        sorted_names.extend(ns.functions.iter().map(|s| (&s.name, s.results.len())));
-    }
-    sorted_names.sort_by_key(|x| x.0.as_str());
-
-    for (name, results) in sorted_names {
-        names.push(format!("{{ name: '{}', results: {} }}", &name, results));
-    }
-
-    contents.append(&mut user_code);
+    let user_code = fs::read(&opts.input_js)?;
 
     // Create a tmp dir to hold all the library objects
     // This can go away once we do all the wasm-merge stuff in process
     let tmp_dir = TempDir::new()?;
     let core_path = tmp_dir.path().join("core.wasm");
-    let shim_path = tmp_dir.path().join("shim.wasm");
 
     // First wizen the core module
     let self_cmd = env::args().next().expect("Expected a command argument");
@@ -80,7 +49,7 @@ fn main() -> Result<()> {
             .stdin
             .take()
             .expect("Expected to get writeable stdin")
-            .write_all(&contents)?;
+            .write_all(&user_code)?;
         let status = command.wait()?;
         if !status.success() {
             bail!("Couldn't create wasm from input");

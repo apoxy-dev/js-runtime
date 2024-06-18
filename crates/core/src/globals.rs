@@ -49,30 +49,6 @@ pub fn inject_globals(context: &JSContextRef) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[link(wasm_import_module = "shim")]
-extern "C" {
-    // this import will get satisified by the import shim
-    fn __invokeHostFunc_0_0(func_idx: u32);
-    fn __invokeHostFunc_1_0(func_idx: u32, ptr: u64);
-    fn __invokeHostFunc_2_0(func_idx: u32, ptr: u64, ptr2: u64);
-    fn __invokeHostFunc_3_0(func_idx: u32, ptr: u64, ptr2: u64, ptr3: u64);
-    fn __invokeHostFunc_4_0(func_idx: u32, ptr: u64, ptr2: u64, ptr3: u64, ptr4: u64);
-    fn __invokeHostFunc_5_0(func_idx: u32, ptr: u64, ptr2: u64, ptr3: u64, ptr4: u64, ptr5: u64);
-    fn __invokeHostFunc_0_1(func_idx: u32) -> u64;
-    fn __invokeHostFunc_1_1(func_idx: u32, ptr: u64) -> u64;
-    fn __invokeHostFunc_2_1(func_idx: u32, ptr: u64, ptr2: u64) -> u64;
-    fn __invokeHostFunc_3_1(func_idx: u32, ptr: u64, ptr2: u64, ptr3: u64) -> u64;
-    fn __invokeHostFunc_4_1(func_idx: u32, ptr: u64, ptr2: u64, ptr3: u64, ptr4: u64) -> u64;
-    fn __invokeHostFunc_5_1(
-        func_idx: u32,
-        ptr: u64,
-        ptr2: u64,
-        ptr3: u64,
-        ptr4: u64,
-        ptr5: u64,
-    ) -> u64;
-}
-
 fn get_args_as_str(args: &[JSValueRef]) -> anyhow::Result<String> {
     args.iter()
         .map(|arg| arg.as_str())
