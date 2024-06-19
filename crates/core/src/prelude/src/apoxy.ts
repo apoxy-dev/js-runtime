@@ -126,7 +126,7 @@ Apoxy.serve = new Proxy(Apoxy.serve, {
           backend_resp.sendDownstream();
         }
       } catch (e) {
-        console.error(e);
+        console.error("[apoxy/js] Exception in handler:", e);
       }
     };
     return Reflect.apply(target, thisArg, [handler]);
@@ -196,7 +196,7 @@ class RequestImpl implements Request {
         this.method = "GET";
         break;
       default:
-        throw new Error(`Invalid method: ${obj.method}`);
+        throw new Error(`Invalid method: "${obj.method}"`);
     }
     this.headers = new HeadersImpl(obj.header);
   }

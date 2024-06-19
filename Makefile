@@ -22,7 +22,7 @@ core:
 				&& npx -y -p typescript tsc src/index.ts --lib es2020 --declaration --emitDeclarationOnly --outDir dist \
 				&& cd ../.. \
 				&& cargo build --release --target=wasm32-wasi \
-				&& wasm-opt --enable-reference-types --enable-bulk-memory --strip -O3 ../../target/wasm32-wasi/release/js_pdk_core.wasm -o ../../target/wasm32-wasi/release/js_pdk_core.wasm \
+				&& wasm-opt --enable-reference-types --enable-bulk-memory --strip -O3 ../../target/wasm32-wasi/release/js_core.wasm -o ../../target/wasm32-wasi/release/js_core.wasm \
 				&& cd -
 
 fmt: fmt-core fmt-cli
@@ -65,15 +65,3 @@ else
 endif
 		@extism call examples/react.wasm render --wasi
 		@extism call examples/react.wasm setState --input='{"action": "SET_SETTING", "payload": { "backgroundColor": "tomato" }}' --wasi
-
-compile-examples: cli
-		cd examples/react && npm install && npm run build && cd ../..
-		./target/release/extism-js examples/simple_js/script.js -i examples/simple_js/script.d.ts -o examples/simple_js.wasm
-		cd examples/bundled && npm install && npm run build && cd ../..
-		./target/release/extism-js examples/host_funcs/script.js -i examples/host_funcs/script.d.ts -o examples/host_funcs.wasm
-		./target/release/extism-js examples/exports/script.js -i examples/exports/script.d.ts -o examples/exports.wasm
-
-kitchen: 
-	cd examples/kitchen-sink && npm install && npm run build && cd ../..
-	./target/release/extism-js examples/kitchen-sink/dist/index.js -i examples/kitchen-sink/src/index.d.ts -o examples/kitchen-sink.wasm
-	@extism call examples/kitchen-sink.wasm greet --input "Steve" --wasi --allow-host "*" --config "last_name=Manuel"

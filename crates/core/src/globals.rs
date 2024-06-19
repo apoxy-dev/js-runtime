@@ -270,10 +270,13 @@ fn build_fetch_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
             let url = args.get(0).unwrap().as_str()?;
             let opts: HashMap<String, JSValue> = args.get(1).unwrap().try_into()?;
 
-            let method = opts.get("method").unwrap().to_string();
+            let mut method = opts.get("method").unwrap().to_string();
             match method.as_str() {
                 "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS" => {}
-                _ => return Err(anyhow!("Invalid method: {}", method)),
+                "" => {
+                    method = "GET".to_string();
+                }
+                _ => return Err(anyhow!("[core] Invalid method: {}", method)),
             }
             let mut http_req = HttpRequest::new(url).with_method(method.to_string());
 
@@ -334,7 +337,10 @@ fn decode_utf8_buffer_to_js_string(
 ) -> impl FnMut(&JSContextRef, JSValueRef, &[JSValueRef]) -> anyhow::Result<JSValue> {
     move |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
         if args.len() != 5 {
-            return Err(anyhow!("Expecting 5 arguments, received {}", args.len()));
+            return Err(anyhow!(
+                "[core] Expecting 5 arguments, received {}",
+                args.len()
+            ));
         }
 
         let buffer: Vec<u8> = args[0].try_into()?;
@@ -346,7 +352,7 @@ fn decode_utf8_buffer_to_js_string(
         let mut view = buffer
             .get(byte_offset..(byte_offset + byte_length))
             .ok_or_else(|| {
-                anyhow!("Provided offset and length is not valid for provided buffer")
+                anyhow!("[core] Provided offset and length is not valid for provided buffer")
             })?;
 
         if !ignore_bom {
@@ -373,7 +379,7 @@ fn encode_js_string_to_utf8_buffer(
 ) -> impl FnMut(&JSContextRef, JSValueRef, &[JSValueRef]) -> anyhow::Result<JSValue> {
     move |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
         if args.len() != 1 {
-            return Err(anyhow!("Expecting 1 argument, got {}", args.len()));
+            return Err(anyhow!("[core] Expecting 1 argument, got {}", args.len()));
         }
 
         let js_string: String = args[0].try_into()?;
