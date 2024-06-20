@@ -115,16 +115,20 @@ Apoxy.serve = new Proxy(Apoxy.serve, {
         let req = new RequestImpl(reqABI);
         let resp = new FilterResponseImpl();
 
-        handler!(req, resp);
-
-        if (resp.sendDownstream()) {
-          console.debug("Sent response downstream");
-          return;
-        }
-        let backend_resp = req.response() as BackendResponseImpl;
-        if (backend_resp) {
-          backend_resp.sendDownstream();
-        }
+        Promise.resolve(handler!(req, resp))
+          .then(() => {
+            if (resp.sendDownstream()) {
+              console.debug("Sent response downstream");
+              return;
+            }
+            let backend_resp = req.response() as BackendResponseImpl;
+            if (backend_resp) {
+              backend_resp.sendDownstream();
+            }
+          })
+          .catch((e) => {
+            console.error("[apoxy/js] Exception in handler:", e);
+          });
       } catch (e) {
         console.error("[apoxy/js] Exception in handler:", e);
       }
@@ -328,10 +332,11 @@ class FilterResponseImpl implements Response {
       content_len: this.content_len,
       header: this._headers.toObject(),
     };
-    const result = __apoxy_send_downstream(
-      abiResp,
-      this._body ? this._body.buffer : new ArrayBuffer(0),
-    );
+    let body = this._body ? this._body : new Uint8Array(0);
+    if (typeof body === "string") {
+      body = new TextEncoder().encode(body);
+    }
+    const result = __apoxy_send_downstream(abiResp, body.buffer);
     if (result.error === true) {
       throw new Error(result.message);
     }

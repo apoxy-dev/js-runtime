@@ -17,6 +17,7 @@ use quickjs_wasm_rs::{JSContextRef, JSValue, JSValueRef};
 use std::io;
 use std::io::Read;
 
+mod fetch;
 mod globals;
 
 static mut CONTEXT: OnceCell<JSContextRef> = OnceCell::new();

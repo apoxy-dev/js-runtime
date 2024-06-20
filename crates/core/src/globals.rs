@@ -1,5 +1,6 @@
 use std::{borrow::Cow, collections::HashMap, str::from_utf8};
 
+use crate::fetch::*;
 use anyhow::{anyhow, Context};
 use chrono::{SecondsFormat, Utc};
 use extism_pdk::*;
@@ -183,6 +184,7 @@ fn build_apoxy_resp_send_object(context: &JSContextRef) -> anyhow::Result<JSValu
 fn build_apoxy_send_downstream_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
     let apoxy_send_downstream = context.wrap_callback(
         |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
+            debug!("__apoxy_send_downstream");
             let resp_bytes = json::transcode_output(*(args.first().unwrap()))?;
             let resp_mem = Memory::from_bytes(resp_bytes)?;
 
@@ -278,25 +280,38 @@ fn build_fetch_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
                 }
                 _ => return Err(anyhow!("[core] Invalid method: {}", method)),
             }
-            let mut http_req = HttpRequest::new(url).with_method(method.to_string());
+            let mut fetch_req = fetch::FetchRequest {
+                url: url.to_string(),
+                method,
+                headers: HashMap::new(),
+            };
 
             let headers = opts.get("headers").unwrap();
             if let JSValue::Object(headers) = headers {
                 for (key, value) in headers {
-                    http_req = http_req.with_header(key, value.to_string());
+                    fetch_req.headers.insert(key.to_string(), value.to_string());
                 }
             }
 
             let body = opts.get("body").unwrap_or(&JSValue::Undefined);
             let mut http_body: Option<String> = None;
             if let JSValue::String(body) = body {
-                http_body = Some(body.clone());
+                http_body = Some(body.to_string());
             }
 
-            match http::request::<String>(&http_req, http_body) {
+            match fetch::request::<String>(&fetch_req, http_body) {
                 Ok(resp) => {
                     let parsed_result = HashMap::from([
                         ("status", JSValue::Int(i32::from(resp.status_code()))),
+                        (
+                            "headers",
+                            JSValue::from_hashmap(
+                                resp.headers()
+                                    .into_iter()
+                                    .map(|(k, v)| (k.as_str(), v.as_str()))
+                                    .collect(),
+                            ),
+                        ),
                         ("body", JSValue::ArrayBuffer(resp.body())),
                     ]);
                     Ok(JSValue::from_hashmap(parsed_result))
