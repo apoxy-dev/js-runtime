@@ -21,7 +21,7 @@ mod fetch;
 mod globals;
 
 static mut CONTEXT: OnceCell<JSContextRef> = OnceCell::new();
-static mut CALL_ARGS: Vec<Vec<JSValue>> = vec![];
+static mut USER_CODE: OnceCell<String> = OnceCell::new();
 
 #[export_name = "wizer.initialize"]
 extern "C" fn init() {
@@ -30,10 +30,7 @@ extern "C" fn init() {
 
     let mut code = String::new();
     io::stdin().read_to_string(&mut code).unwrap();
-
-    let _ = context
-        .eval_global("script.js", &code)
-        .expect("Could not eval main script");
+    unsafe { USER_CODE.set(code).unwrap() };
 
     unsafe {
         CONTEXT.set(context).unwrap();
@@ -49,6 +46,10 @@ fn js_context<'a>() -> &'a JSContextRef {
         let context = CONTEXT.get_unchecked();
         context
     }
+}
+
+fn code() -> &'static str {
+    unsafe { USER_CODE.get_unchecked() }
 }
 
 fn convert_js_value<'a>(context: &'a JSContextRef, v: &JSValue) -> JSValueRef<'a> {
@@ -91,8 +92,13 @@ fn export_names(exports: JSValueRef<'static>) -> anyhow::Result<Vec<String>> {
 }
 
 #[plugin_fn]
-pub fn _start() -> FnResult<String> {
-    Ok(format!("Hello from Rust!"))
+pub fn _start() -> FnResult<()> {
+    let context = js_context();
+    let code = code();
+
+    context.eval_global("script.js", code)?;
+
+    Ok(())
 }
 
 #[plugin_fn]
