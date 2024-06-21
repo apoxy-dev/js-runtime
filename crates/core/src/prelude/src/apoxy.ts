@@ -59,8 +59,6 @@ declare global {
   }
 
   interface Request {
-    url: string;
-
     method?:
       | "GET"
       | "HEAD"
@@ -72,7 +70,17 @@ declare global {
       | "TRACE"
       | "PATCH";
 
+    url: string;
+
+    proto: string;
+
     headers: Headers;
+
+    content_len: number;
+
+    host: string;
+
+    remote_addr: string;
 
     body(): Uint8Array;
 
@@ -188,7 +196,6 @@ class HeadersImpl implements Headers {
 
 class RequestImpl implements Request {
   constructor(obj: RequestABI) {
-    this.url = obj.url;
     switch (obj.method) {
       case "GET":
       case "HEAD":
@@ -207,10 +214,14 @@ class RequestImpl implements Request {
       default:
         throw new Error(`Invalid method: "${obj.method}"`);
     }
+    this.url = obj.url;
+    this.proto = obj.proto;
     this.headers = new HeadersImpl(obj.header);
+    this.host = obj.host;
+    this.remote_addr = obj.remote_addr;
+    this.content_len = obj.content_len;
   }
 
-  url: string;
   method?:
     | "GET"
     | "HEAD"
@@ -222,9 +233,17 @@ class RequestImpl implements Request {
     | "TRACE"
     | "PATCH";
 
+  url: string;
+
+  proto: string;
+
   headers: Headers;
 
   content_len: number = 0;
+
+  host: string;
+
+  remote_addr: string;
 
   body(): Uint8Array {
     const result = __apoxy_req_body(this.abiReq());
@@ -265,15 +284,25 @@ class RequestImpl implements Request {
   }
 
   private abiReq(): RequestABI {
+    // Parse this.proto into major and minor
+    let proto_major: number;
+    let proto_minor: number;
+    try {
+      const [major, minor] = this.proto.split("/");
+      proto_major = parseInt(major);
+      proto_minor = parseInt(minor);
+    } catch (e) {
+      console.error("Failed to parse proto:", this.proto);
+    }
     return {
       method: this.method!,
       url: this.url,
-      proto: "HTTP",
-      proto_major: 1,
-      proto_minor: 1,
+      proto: this.proto,
+      proto_major: proto_major,
+      proto_minor: proto_minor,
       header: this.headers.toObject(),
-      host: "localhost",
-      remote_addr: "",
+      host: this.host,
+      remote_addr: this.remote_addr,
       content_len: this.content_len,
     };
   }
