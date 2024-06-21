@@ -118,6 +118,11 @@ declare global {
   /**
    * @internal
    */
+  var __backend_mode: boolean;
+
+  /**
+   * @internal
+   */
   var __handler: (req: RequestABI) => void;
 }
 
@@ -125,18 +130,31 @@ Apoxy.serve = new Proxy(Apoxy.serve, {
   apply(target, thisArg, [handler]) {
     __handler = (reqABI: RequestABI) => {
       try {
-        let req = new RequestImpl(reqABI);
-        let resp = new FilterResponseImpl();
+        let req: Request;
+        let resp: Response;
+        if (__backend_mode) {
+          req = new BackendRequestImpl(reqABI);
+          resp = new BackendResponseImpl();
+        } else {
+          req = new RequestImpl(reqABI);
+          resp = new FilterResponseImpl();
+        }
 
         Promise.resolve(handler!(req, resp))
           .then(() => {
-            if (resp.sendDownstream()) {
-              console.debug("Sent response downstream");
-              return;
-            }
-            let backend_resp = req.response() as BackendResponseImpl;
-            if (backend_resp) {
+            if (__backend_mode) {
+              let backend_resp = resp as BackendResponseImpl;
               backend_resp.sendDownstream();
+            } else {
+              let filter_resp = resp as FilterResponseImpl;
+              if (filter_resp.sendDownstream()) {
+                console.debug("Sent response downstream");
+                return;
+              }
+              let backend_resp = req.response() as BackendResponseImpl;
+              if (backend_resp) {
+                backend_resp.sendDownstream();
+              }
             }
           })
           .catch((e) => {
@@ -310,6 +328,16 @@ class RequestImpl implements Request {
   private _body_set: boolean = false;
   private _abi_response: ResponseABI | null = null;
   private _response: Response | null = null;
+}
+
+class BackendRequestImpl extends RequestImpl {
+  next(): Response {
+    throw new Error("Method not allowed for backend request");
+  }
+
+  response(): Response | null {
+    return null;
+  }
 }
 
 interface ResponseABI {
