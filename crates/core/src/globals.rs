@@ -60,11 +60,24 @@ fn get_args_as_str(args: &[JSValueRef]) -> anyhow::Result<String> {
 
 fn build_apoxy_object(context: &JSContextRef) -> anyhow::Result<JSValueRef> {
     let apoxy_object = context.object_value()?;
+
     let apoxy_serve = context.wrap_callback(
         |_ctx: &JSContextRef, _this: JSValueRef, _args: &[JSValueRef]| Ok(JSValue::Undefined),
     )?;
 
+    let apoxy_env = context.object_value()?;
+    let apoxy_env_get = context.wrap_callback(
+        |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
+            let key = args.first().unwrap().as_str()?;
+            debug!("[core/env.get] key: {}", key);
+            let value = config::get(&key).unwrap_or_default().unwrap();
+            Ok(JSValue::String(value))
+        },
+    )?;
+    apoxy_env.set_property("get", apoxy_env_get)?;
+
     apoxy_object.set_property("serve", apoxy_serve)?;
+    apoxy_object.set_property("env", apoxy_env)?;
 
     Ok(apoxy_object)
 }

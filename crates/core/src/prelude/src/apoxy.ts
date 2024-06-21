@@ -98,7 +98,12 @@ declare global {
 
   type ServeHandler = (req: Request, res: Response) => void;
 
+  var Env: {
+    get(key: string): string | null;
+  };
+
   var Apoxy: {
+    env: typeof Env;
     serve(handler: ServeHandler): void;
   };
 
