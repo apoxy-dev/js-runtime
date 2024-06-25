@@ -102,14 +102,18 @@ pub fn _start() -> FnResult<()> {
 }
 
 #[plugin_fn]
+pub fn _apoxy_sdk_v1alpha() -> FnResult<()> {
+    Ok(())
+}
+
+#[plugin_fn]
 pub fn _apoxy_start() -> FnResult<()> {
     let context = js_context();
 
     let req = javy::json::transcode_input(&context, input_bytes().as_slice())?;
-    context.global_object()?.set_property(
-        "__backend_mode",
-        req.get_property("backend_mode")?,
-    )?;
+    context
+        .global_object()?
+        .set_property("__backend_mode", req.get_property("backend_mode")?)?;
     context
         .global_object()?
         .get_property("__handler")?
