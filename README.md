@@ -29,7 +29,7 @@ The easiest way to set this up would be to use esbuild. The following is a quick
 ```bash
 # Make a new JS project
 npm init -y
-npm install esbuild @extism/js-pdk --save-dev
+npm install esbuild --save-dev
 mkdir src
 mkdir dist
 ```
@@ -73,11 +73,11 @@ Add a `build` script to your `package.json`:
 
 ```json
 {
-  "name": "extism-plugin",
+  "name": "your-plugin",
   // ...
   "scripts": {
     // ...
-    "build": "node esbuild.js && extism-js dist/index.js -i src/index.d.ts -o dist/plugin.wasm"
+    "build": "node esbuild.js && apoxy-js dist/index.js -o dist/plugin.wasm"
   },
   // ...
 }
@@ -106,6 +106,6 @@ make
 
 To test the built compiler (ensure you have Extism installed):
 ```bash
-./target/release/extism-js bundle.js -i bundle.d.ts -o out.wasm
+./target/release/apoxy-js bundle.js -o out.wasm
 # => "{\"count\":4}"
 ```
